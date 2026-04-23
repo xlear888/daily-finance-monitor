@@ -24,7 +24,7 @@ yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 print("📊 抓取股價...")
 price_data = []
 for stock in WATCHLIST:
-    df = dl.get_dataset("TaiwanStockPrice", data_id=stock, start_date=yesterday, end_date=today)
+    df = dl.get_data("TaiwanStockPrice", data_id=stock, start_date=yesterday, end_date=today)
     if not df.empty:
         latest = df.iloc[-1]
         price_data.append({
@@ -47,18 +47,18 @@ price_df = pd.DataFrame(price_data)
 print("🌍 抓取經濟指標...")
 econ_data = {}
 for cur in ["USD", "JPY", "CNY", "EUR"]:
-    df = dl.get_dataset("TaiwanExchangeRate", data_id=cur, start_date=yesterday)
+    df = dl.get_data("TaiwanExchangeRate", data_id=cur, start_date=yesterday)
     if not df.empty:
         latest = df.iloc[-1]
         econ_data[f"匯率_{cur}"] = f"即期 {latest.get('spot_sell', 'N/A')}"
 
-df_bi = dl.get_dataset("TaiwanBusinessIndicator", start_date=yesterday)
+df_bi = dl.get_data("TaiwanBusinessIndicator", start_date=yesterday)
 if not df_bi.empty:
     latest = df_bi.iloc[-1]
     econ_data["景氣指標"] = f"領先:{latest.get('leading','N/A')} | 燈號:{latest.get('monitoring','N/A')}"
 
 for ds, name in [("CrudeOilPrices", "原油"), ("GoldPrice", "黃金")]:
-    df = dl.get_dataset(ds, start_date=yesterday)
+    df = dl.get_data(ds, start_date=yesterday)
     if not df.empty:
         econ_data[name] = f"{df.iloc[-1].get('price', 'N/A')} USD"
 
@@ -66,7 +66,7 @@ for ds, name in [("CrudeOilPrices", "原油"), ("GoldPrice", "黃金")]:
 print("💼 抓取法人買賣超...")
 institutional_data = []
 for stock in WATCHLIST:
-    df = dl.get_dataset("TaiwanStockInstitutionalInvestorsBuySell", data_id=stock, start_date=yesterday, end_date=today)
+    df = dl.get_data("TaiwanStockInstitutionalInvestorsBuySell", data_id=stock, start_date=yesterday, end_date=today)
     if not df.empty:
         latest = df.iloc[-1]
         institutional_data.append({
@@ -80,7 +80,7 @@ for stock in WATCHLIST:
 print("📑 抓取財報...")
 financial_data = []
 for stock in WATCHLIST:
-    rev_df = dl.get_dataset("TaiwanStockMonthRevenue", data_id=stock, start_date=yesterday)
+    rev_df = dl.get_data("TaiwanStockMonthRevenue", data_id=stock, start_date=yesterday)
     if not rev_df.empty:
         latest = rev_df.iloc[-1]
         financial_data.append({
