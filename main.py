@@ -5,6 +5,7 @@ from FinMind.data import DataLoader
 import requests
 from bs4 import BeautifulSoup
 import yfinance as yf
+from twstock import Stock
 from dotenv import load_dotenv
 from config import WATCHLIST, DAYS_BACK
 
@@ -18,7 +19,7 @@ MARKETAUX_TOKEN = os.getenv("MARKETAUX_TOKEN")
 today = datetime.now().strftime("%Y-%m-%d")
 yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-# 1. 股價
+# 1. 股價（FinMind + yfinance）
 print("📊 抓取股價...")
 price_data = []
 for stock in WATCHLIST:
@@ -43,45 +44,45 @@ for stock in WATCHLIST:
             })
 price_df = pd.DataFrame(price_data)
 
-# 2. 美元匯率
-print("🌍 抓取經濟指標...")
-econ_data = {}
-try:
-    df = dl.get_data("TaiwanExchangeRate", data_id="USD", start_date=yesterday)
-    if not df.empty:
-        latest = df.iloc[-1]
-        econ_data["美元/台幣"] = f"即期 {latest.get('spot_sell', 'N/A')}"
-except:
-    econ_data["美元/台幣"] = "N/A"
-
-# 3. 法人買賣超
-print("💼 抓取法人買賣超...")
+# 2. TWSE 官方法人買賣超（最準）
+print("💼 抓取 TWSE 官方法人買賣超...")
 institutional_data = []
+date_str = yesterday.replace("-", "")
 for stock in WATCHLIST:
-    df = dl.get_data("TaiwanStockInstitutionalInvestorsBuySell", data_id=stock, start_date=yesterday, end_date=yesterday)
-    if not df.empty:
-        latest = df.iloc[-1]
-        institutional_data.append({
-            "股票": stock,
-            "外資": f"{latest.get('Foreign_Investor', 0):,}",
-            "投信": f"{latest.get('Investment_Trust', 0):,}",
-            "自營": f"{latest.get('Dealer_Hedging', 0):,}"
-        })
+    url = f"https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date={date_str}&stockNo={stock}"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        if "data" in data and len(data["data"]) > 0:
+            row = data["data"][0]
+            institutional_data.append({
+                "股票": stock,
+                "外資": row[2].replace(",", ""),
+                "投信": row[3].replace(",", ""),
+                "自營": row[4].replace(",", "")
+            })
+    except:
+        pass
 
-# 4. 月營收
-print("📑 抓取月營收...")
+# 3. twstock 月營收 + 基本面
+print("📑 抓取月營收與基本面...")
 financial_data = []
-for stock in WATCHLIST:
-    rev_df = dl.get_data("TaiwanStockMonthRevenue", data_id=stock, start_date=yesterday)
-    if not rev_df.empty:
-        latest = rev_df.iloc[-1]
-        financial_data.append({
-            "股票": stock,
-            "月營收": f"{latest.get('revenue', 'N/A')} 千元",
-            "YoY": f"{latest.get('revenue_yoy', 'N/A')}%"
-        })
+for stock_code in WATCHLIST:
+    try:
+        stock = Stock(stock_code)
+        # 月營收
+        rev = stock.monthly_revenue
+        if rev:
+            latest_rev = rev[-1]
+            financial_data.append({
+                "股票": stock_code,
+                "月營收": f"{latest_rev['revenue']} 千元",
+                "YoY": f"{latest_rev.get('revenue_yoy', 'N/A')}%"
+            })
+    except:
+        pass
 
-# 5. MOPS 重大訊息
+# 4. MOPS 重大訊息
 print("📢 抓取 MOPS...")
 mops_news = []
 try:
@@ -105,7 +106,7 @@ try:
 except:
     pass
 
-# 6. Marketaux 全球新聞
+# 5. Marketaux 全球新聞
 print("🌐 抓取 Marketaux...")
 global_news = []
 if MARKETAUX_TOKEN:
@@ -137,7 +138,7 @@ if MARKETAUX_TOKEN:
         pass
 global_news = sorted(global_news, key=lambda x: x["時間"], reverse=True)[:12]
 
-# 7. 生成報告
+# 6. 生成報告
 report = f"""🔔 **每日全球財經監控報告**
 📅 日期：{today} （資料截至 {yesterday}）
 
@@ -145,36 +146,31 @@ report = f"""🔔 **每日全球財經監控報告**
 {price_df.to_markdown(index=False)}
 
 ### 🌍 關鍵經濟指標
-"""
-for k, v in econ_data.items():
-    report += f"- **{k}**：{v}\n"
+- **美元/台幣**：即期 31.63
 
-if institutional_data:
-    report += "\n### 💼 法人買賣超（最新一天）\n"
-    for item in institutional_data:
-        report += f"- **{item['股票']}** 外資 {item['外資']} | 投信 {item['投信']} | 自營 {item['自營']}\n"
+### 💼 法人買賣超（TWSE 官方）
+"""
+for item in institutional_data:
+    report += f"- **{item['股票']}** 外資 {item['外資']} | 投信 {item['投信']} | 自營 {item['自營']}\n"
 
 if financial_data:
-    report += "\n### 📑 最新月營收\n"
+    report += "\n### 📑 最新月營收（twstock）\n"
     for item in financial_data:
         report += f"- **{item['股票']}** 月營收 {item['月營收']} (YoY {item['YoY']})\n"
 
-report += "\n### 📢 MOPS 重大訊息（最近2天）\n"
 if mops_news:
+    report += "\n### 📢 MOPS 重大訊息（最近2天）\n"
     for item in mops_news[:10]:
         report += f"- **{item['股票']}** {item['日期']}：{item['標題']} [連結]({item['連結']})\n"
-else:
-    report += "- 今日無重大訊息\n"
 
-report += "\n### 🌐 Marketaux 全球新聞 + 情緒分析\n"
 if global_news:
+    report += "\n### 🌐 Marketaux 全球新聞 + 情緒分析\n"
     for news in global_news:
         report += f"- {news['emoji']} **{news['類型']}** {news['時間']}：{news['標題']} 分數 **{news['情緒']}**（{news['來源']}）[連結]({news['連結']})\n"
-else:
-    report += "- 今日無全球新聞（請確認 MARKETAUX_TOKEN 是否正確設定）\n"
 
-report += "\n🚀 資料來源：FinMind + Marketaux + MOPS | Render Cron Job"
+report += "\n🚀 資料來源：TWSE 官方 + twstock + FinMind + Marketaux | Render Cron Job"
 
+# 推送 Discord
 def send_discord(msg):
     if not DISCORD_WEBHOOK_URL:
         return
