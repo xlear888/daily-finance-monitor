@@ -1,0 +1,8 @@
+FinMind
+pandas
+requests
+python-dotenv
+beautifulsoup4
+lxml
+yfinance
+finnhub-python
