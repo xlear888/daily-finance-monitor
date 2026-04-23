@@ -95,7 +95,7 @@ try:
         r = requests.post(url, data=payload, timeout=15)
         soup = BeautifulSoup(r.text, "lxml")
         rows = soup.find_all("tr", class_=lambda x: x in ["even", "odd"])
-        for row in rows[:6]:
+        for row in rows[:8]:
             cols = row.find_all("td")
             if len(cols) >= 4:
                 date = cols[0].text.strip()
@@ -114,7 +114,7 @@ if MARKETAUX_TOKEN:
             "api_token": MARKETAUX_TOKEN,
             "filter_entities": "true",
             "must_have_entities": "true",
-            "limit": 12,
+            "limit": 15,
             "published_after": yesterday,
             "language": "zh,en"
         }
@@ -135,7 +135,7 @@ if MARKETAUX_TOKEN:
                     })
     except:
         pass
-global_news = sorted(global_news, key=lambda x: x["時間"], reverse=True)[:10]
+global_news = sorted(global_news, key=lambda x: x["時間"], reverse=True)[:12]
 
 # 7. 生成報告
 report = f"""🔔 **每日全球財經監控報告**
@@ -150,7 +150,7 @@ for k, v in econ_data.items():
     report += f"- **{k}**：{v}\n"
 
 if institutional_data:
-    report += "\n### 💼 法人買賣超（昨天）\n"
+    report += "\n### 💼 法人買賣超（最新一天）\n"
     for item in institutional_data:
         report += f"- **{item['股票']}** 外資 {item['外資']} | 投信 {item['投信']} | 自營 {item['自營']}\n"
 
@@ -161,7 +161,7 @@ if financial_data:
 
 report += "\n### 📢 MOPS 重大訊息（最近2天）\n"
 if mops_news:
-    for item in mops_news[:8]:
+    for item in mops_news[:10]:
         report += f"- **{item['股票']}** {item['日期']}：{item['標題']} [連結]({item['連結']})\n"
 else:
     report += "- 今日無重大訊息\n"
@@ -171,11 +171,10 @@ if global_news:
     for news in global_news:
         report += f"- {news['emoji']} **{news['類型']}** {news['時間']}：{news['標題']} 分數 **{news['情緒']}**（{news['來源']}）[連結]({news['連結']})\n"
 else:
-    report += "- 今日無全球新聞\n"
+    report += "- 今日無全球新聞（請確認 MARKETAUX_TOKEN 是否正確設定）\n"
 
 report += "\n🚀 資料來源：FinMind + Marketaux + MOPS | Render Cron Job"
 
-# 推送 Discord
 def send_discord(msg):
     if not DISCORD_WEBHOOK_URL:
         return
