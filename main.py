@@ -54,11 +54,11 @@ for cur in ["USD", "JPY", "CNY", "EUR"]:
 
 # 台灣景氣指標（免費版無法使用，先跳過）
 try:
-# 2. 經濟指標（只保留免費可用的匯率）
+
+# 2. 經濟指標（只保留免費可用的美元匯率）
 print("🌍 抓取經濟指標...")
 econ_data = {}
 
-# 只抓 USD 匯率（確定免費）
 try:
     df = dl.get_data("TaiwanExchangeRate", data_id="USD", start_date=yesterday)
     if not df.empty:
