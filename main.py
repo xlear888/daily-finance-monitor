@@ -52,10 +52,16 @@ for cur in ["USD", "JPY", "CNY", "EUR"]:
         latest = df.iloc[-1]
         econ_data[f"匯率_{cur}"] = f"即期 {latest.get('spot_sell', 'N/A')}"
 
-df_bi = dl.get_data("TaiwanBusinessIndicator", start_date=yesterday)
-if not df_bi.empty:
-    latest = df_bi.iloc[-1]
-    econ_data["景氣指標"] = f"領先:{latest.get('leading','N/A')} | 燈號:{latest.get('monitoring','N/A')}"
+# 台灣景氣指標（免費版無法使用，先跳過）
+try:
+    df_bi = dl.get_data("TaiwanBusinessIndicator", start_date=yesterday)
+    if not df_bi.empty:
+        latest = df_bi.iloc[-1]
+        econ_data["景氣指標"] = f"領先:{latest.get('leading','N/A')} | 燈號:{latest.get('monitoring','N/A')}"
+    else:
+        econ_data["景氣指標"] = "N/A（免費版無法取得）"
+except:
+    econ_data["景氣指標"] = "N/A（免費版無法取得）"
 
 for ds, name in [("CrudeOilPrices", "原油"), ("GoldPrice", "黃金")]:
     df = dl.get_data(ds, start_date=yesterday)
