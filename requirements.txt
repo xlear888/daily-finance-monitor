@@ -8,4 +8,4 @@ yfinance
 finnhub-python
 tqdm
 tabulate
-# force rebuild 2026-04-23
+twstock
