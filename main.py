@@ -19,9 +19,8 @@ MARKETAUX_TOKEN = os.getenv("MARKETAUX_TOKEN")
 
 today = datetime.now().strftime("%Y-%m-%d")
 yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-two_days_ago = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
 
-# 1. 股價（FinMind + yfinance）
+# 1. 股價
 print("📊 抓取股價...")
 price_data = []
 for stock in WATCHLIST:
@@ -49,12 +48,15 @@ price_df = pd.DataFrame(price_data)
 # 2. 經濟指標（只保留免費美元匯率）
 print("🌍 抓取經濟指標...")
 econ_data = {}
-df = dl.get_data("TaiwanExchangeRate", data_id="USD", start_date=yesterday)
-if not df.empty:
-    latest = df.iloc[-1]
-    econ_data["美元/台幣"] = f"即期 {latest.get('spot_sell', 'N/A')}"
+try:
+    df = dl.get_data("TaiwanExchangeRate", data_id="USD", start_date=yesterday)
+    if not df.empty:
+        latest = df.iloc[-1]
+        econ_data["美元/台幣"] = f"即期 {latest.get('spot_sell', 'N/A')}"
+except:
+    econ_data["美元/台幣"] = "N/A"
 
-# 3. 法人買賣超（改抓昨天資料）
+# 3. 法人買賣超
 print("💼 抓取法人買賣超...")
 institutional_data = []
 for stock in WATCHLIST:
@@ -68,7 +70,7 @@ for stock in WATCHLIST:
             "自營": f"{latest.get('Dealer_Hedging', 0):,}"
         })
 
-# 4. 財報（月營收）
+# 4. 最新月營收
 print("📑 抓取財報...")
 financial_data = []
 for stock in WATCHLIST:
@@ -81,7 +83,7 @@ for stock in WATCHLIST:
             "YoY": f"{latest.get('revenue_yoy', 'N/A')}%"
         })
 
-# 5. MOPS 重大訊息
+# 5. MOPS 重大訊息（放寬條件）
 print("📢 抓取 MOPS...")
 def get_mops_news(stock_list, days=2):
     url = "https://mops.twse.com.tw/mops/web/ajax_t05st01"
@@ -93,24 +95,23 @@ def get_mops_news(stock_list, days=2):
             "date1": (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
         }
         try:
-            r = requests.post(url, data=payload, timeout=10)
+            r = requests.post(url, data=payload, timeout=15)
             soup = BeautifulSoup(r.text, "lxml")
             rows = soup.find_all("tr", class_=lambda x: x in ["even", "odd"])
-            for row in rows[:8]:
+            for row in rows[:10]:
                 cols = row.find_all("td")
                 if len(cols) >= 4:
                     date = cols[0].text.strip()
                     title = cols[2].text.strip()
                     link = "https://mops.twse.com.tw" + cols[2].find("a")["href"] if cols[2].find("a") else ""
-                    if any(kw in title for kw in ["重大", "財報", "董監", "持股", "處分", "投資"]):
-                        news_list.append({"股票": stock, "日期": date, "標題": title, "連結": link})
+                    news_list.append({"股票": stock, "日期": date, "標題": title, "連結": link})
         except:
             pass
     return news_list
 
 mops_news = get_mops_news(WATCHLIST, DAYS_BACK)
 
-# 6. Marketaux 全球新聞 + 情緒（加強版）
+# 6. Marketaux 全球新聞（全部顯示，不過濾情緒）
 print("🌐 抓取 Marketaux...")
 global_news = []
 if MARKETAUX_TOKEN:
@@ -119,7 +120,7 @@ if MARKETAUX_TOKEN:
             "api_token": MARKETAUX_TOKEN,
             "filter_entities": "true",
             "must_have_entities": "true",
-            "limit": 20,
+            "limit": 15,
             "published_after": yesterday,
             "language": "zh,en"
         }
@@ -128,24 +129,23 @@ if MARKETAUX_TOKEN:
             for item in resp.json().get("data", []):
                 for entity in item.get("entities", []):
                     score = entity.get("sentiment_score", 0)
-                    if abs(score) > 0.2:  # 只顯示有明顯情緒的新聞
-                        emoji = "🟢" if score > 0.3 else "🔴" if score < -0.3 else "🟡"
-                        global_news.append({
-                            "類型": entity.get("symbol", "市場"),
-                            "標題": item.get("title", ""),
-                            "情緒": round(score, 2),
-                            "時間": item.get("published_at", "")[:16],
-                            "來源": item.get("source", ""),
-                            "連結": item.get("url", ""),
-                            "emoji": emoji
-                        })
+                    emoji = "🟢" if score > 0.3 else "🔴" if score < -0.3 else "⚪"
+                    global_news.append({
+                        "類型": entity.get("symbol", "市場"),
+                        "標題": item.get("title", ""),
+                        "情緒": round(score, 2),
+                        "時間": item.get("published_at", "")[:16],
+                        "來源": item.get("source", ""),
+                        "連結": item.get("url", ""),
+                        "emoji": emoji
+                    })
     except:
         pass
-global_news = sorted(global_news, key=lambda x: x["時間"], reverse=True)[:10]
+global_news = sorted(global_news, key=lambda x: x["時間"], reverse=True)[:12]
 
-# 7. 生成報告（優化版）
+# 7. 生成報告
 report = f"""🔔 **每日全球財經監控報告**
-📅 日期：{today} （資料截至昨天）
+📅 日期：{today} （資料截至 {yesterday}）
 
 ### 📊 監控股票表現
 {price_df.to_markdown(index=False)}
@@ -156,7 +156,7 @@ for k, v in econ_data.items():
     report += f"- **{k}**：{v}\n"
 
 if institutional_data:
-    report += "\n### 💼 法人買賣超（昨天）\n"
+    report += "\n### 💼 法人買賣超（最新一天）\n"
     for item in institutional_data:
         report += f"- **{item['股票']}** 外資 {item['外資']} | 投信 {item['投信']} | 自營 {item['自營']}\n"
 
@@ -167,17 +167,21 @@ if financial_data:
 
 if mops_news:
     report += "\n### 📢 MOPS 重大訊息（最近2天）\n"
-    for item in mops_news[:8]:
+    for item in mops_news[:10]:
         report += f"- **{item['股票']}** {item['日期']}：{item['標題']} [連結]({item['連結']})\n"
+else:
+    report += "\n### 📢 MOPS 重大訊息（最近2天）\n- 今日無重大訊息\n"
 
 if global_news:
     report += "\n### 🌐 Marketaux 全球新聞 + 情緒分析\n"
     for news in global_news:
         report += f"- {news['emoji']} **{news['類型']}** {news['時間']}：{news['標題']} 分數 **{news['情緒']}**（{news['來源']}）[連結]({news['連結']})\n"
+else:
+    report += "\n### 🌐 Marketaux 全球新聞 + 情緒分析\n- 今日無全球新聞\n"
 
 report += "\n🚀 資料來源：FinMind + Marketaux + MOPS | Render Cron Job"
 
-# 8. 推送 Discord
+# 8. 推送
 def send_discord(msg):
     if not DISCORD_WEBHOOK_URL:
         return
