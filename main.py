@@ -54,22 +54,20 @@ for cur in ["USD", "JPY", "CNY", "EUR"]:
 
 # 台灣景氣指標（免費版無法使用，先跳過）
 try:
-# 2. 經濟指標（已跳過付費的景氣指標）
+# 2. 經濟指標（只保留免費可用的匯率）
 print("🌍 抓取經濟指標...")
 econ_data = {}
-for cur in ["USD", "JPY", "CNY", "EUR"]:
-    df = dl.get_data("TaiwanExchangeRate", data_id=cur, start_date=yesterday)
+
+# 只抓 USD 匯率（確定免費）
+try:
+    df = dl.get_data("TaiwanExchangeRate", data_id="USD", start_date=yesterday)
     if not df.empty:
         latest = df.iloc[-1]
-        econ_data[f"匯率_{cur}"] = f"即期 {latest.get('spot_sell', 'N/A')}"
-
-# 景氣指標需要付費，先跳過
-econ_data["景氣指標"] = "N/A（免費版無法取得）"
-
-for ds, name in [("CrudeOilPrices", "原油"), ("GoldPrice", "黃金")]:
-    df = dl.get_data(ds, start_date=yesterday)
-    if not df.empty:
-        econ_data[name] = f"{df.iloc[-1].get('price', 'N/A')} USD"
+        econ_data["美元/台幣"] = f"即期 {latest.get('spot_sell', 'N/A')}"
+    else:
+        econ_data["美元/台幣"] = "N/A"
+except:
+    econ_data["美元/台幣"] = "N/A"
 
 # 3. 法人買賣超
 print("💼 抓取法人買賣超...")
