@@ -43,30 +43,15 @@ for stock in WATCHLIST:
             })
 price_df = pd.DataFrame(price_data)
 
-# 2. 經濟指標
-print("🌍 抓取經濟指標...")
-econ_data = {}
-for cur in ["USD", "JPY", "CNY", "EUR"]:
-    df = dl.get_data("TaiwanExchangeRate", data_id=cur, start_date=yesterday)
-    if not df.empty:
-        latest = df.iloc[-1]
-        econ_data[f"匯率_{cur}"] = f"即期 {latest.get('spot_sell', 'N/A')}"
-
-# 台灣景氣指標（免費版無法使用，先跳過）
-try:
-
 # 2. 經濟指標（只保留免費可用的美元匯率）
 print("🌍 抓取經濟指標...")
 econ_data = {}
 
-try:
-    df = dl.get_data("TaiwanExchangeRate", data_id="USD", start_date=yesterday)
-    if not df.empty:
-        latest = df.iloc[-1]
-        econ_data["美元/台幣"] = f"即期 {latest.get('spot_sell', 'N/A')}"
-    else:
-        econ_data["美元/台幣"] = "N/A"
-except:
+df = dl.get_data("TaiwanExchangeRate", data_id="USD", start_date=yesterday)
+if not df.empty:
+    latest = df.iloc[-1]
+    econ_data["美元/台幣"] = f"即期 {latest.get('spot_sell', 'N/A')}"
+else:
     econ_data["美元/台幣"] = "N/A"
 
 # 3. 法人買賣超
