@@ -8,6 +8,7 @@ import yfinance as yf
 from twstock import Stock
 from dotenv import load_dotenv
 from config import WATCHLIST, COMPANY_NAMES, DAYS_BACK
+from transformers import pipeline
 
 load_dotenv()
 
@@ -15,6 +16,16 @@ dl = DataLoader()
 dl.login_by_token(os.getenv("FINMIND_TOKEN"))
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 MARKETAUX_TOKEN = os.getenv("MARKETAUX_TOKEN")
+
+# 載入 FinBERT-Tone 情緒分析模型
+print("🤖 載入 FinBERT-Tone 情緒分析模型...")
+sentiment_pipeline = pipeline(
+    "sentiment-analysis",
+    model="yiyanghkust/finbert-tone",
+    tokenizer="yiyanghkust/finbert-tone",
+    return_all_scores=True,
+    device=-1  # 使用 CPU
+)
 
 today = datetime.now().strftime("%Y-%m-%d")
 yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -88,8 +99,8 @@ for stock_code in WATCHLIST:
     except:
         pass
 
-# ====================== 4. MOPS 重大訊息 ======================
-print("📢 抓取 MOPS...")
+# ====================== 4. MOPS 重大訊息 + FinBERT-Tone ======================
+print("📢 抓取 MOPS 並進行 FinBERT-Tone 情緒分析...")
 mops_news = []
 try:
     url = "https://mops.twse.com.tw/mops/web/ajax_t05st01"
@@ -108,12 +119,26 @@ try:
                 date = cols[0].text.strip()
                 title = cols[2].text.strip()
                 link = "https://mops.twse.com.tw" + cols[2].find("a")["href"] if cols[2].find("a") else ""
-                mops_news.append({"股票": stock, "日期": date, "標題": title, "連結": link})
+
+                # FinBERT-Tone 情緒分析
+                result = sentiment_pipeline(title)[0]
+                sentiment = max(result, key=lambda x: x['score'])
+                label = sentiment['label']
+                score = round(sentiment['score'], 3)
+                emoji = "🟢" if label == "positive" else "🔴" if label == "negative" else "⚪"
+
+                mops_news.append({
+                    "股票": stock,
+                    "日期": date,
+                    "標題": title,
+                    "情緒": f"{emoji} {label} ({score})",
+                    "連結": link
+                })
 except:
     pass
 
-# ====================== 5. Marketaux 全球新聞 ======================
-print("🌐 抓取 Marketaux...")
+# ====================== 5. Marketaux 全球新聞 + FinBERT-Tone ======================
+print("🌐 抓取 Marketaux 並進行 FinBERT-Tone 情緒分析...")
 global_news = []
 if MARKETAUX_TOKEN:
     try:
@@ -129,22 +154,26 @@ if MARKETAUX_TOKEN:
         if resp.status_code == 200:
             for item in resp.json().get("data", []):
                 for entity in item.get("entities", []):
-                    score = entity.get("sentiment_score", 0)
-                    emoji = "🟢" if score > 0.3 else "🔴" if score < -0.3 else "⚪"
+                    title = item.get("title", "")
+                    result = sentiment_pipeline(title)[0]
+                    sentiment = max(result, key=lambda x: x['score'])
+                    label = sentiment['label']
+                    score = round(sentiment['score'], 3)
+                    emoji = "🟢" if label == "positive" else "🔴" if label == "negative" else "⚪"
+
                     global_news.append({
                         "類型": entity.get("symbol", "市場"),
-                        "標題": item.get("title", ""),
-                        "情緒": round(score, 2),
+                        "標題": title,
+                        "情緒": f"{emoji} {label} ({score})",
                         "時間": item.get("published_at", "")[:16],
                         "來源": item.get("source", ""),
-                        "連結": item.get("url", ""),
-                        "emoji": emoji
+                        "連結": item.get("url", "")
                     })
     except:
         pass
 global_news = sorted(global_news, key=lambda x: x["時間"], reverse=True)[:12]
 
-# ====================== 6. 優化報告格式 ======================
+# ====================== 6. 生成報告 ======================
 report = f"""🔔 **每日全球財經監控報告**
 📅 **{today}**　資料截至 {yesterday}
 
@@ -165,18 +194,18 @@ if financial_data:
         report += f"- **{item['股票']}**　月營收 **{item['月營收']}**　YoY **{item['YoY']}**\n"
 
 if mops_news:
-    report += "\n### 📢 MOPS 重大訊息（最近2天）\n"
+    report += "\n### 📢 MOPS 重大訊息（最近2天 + FinBERT-Tone）\n"
     for item in mops_news[:10]:
-        report += f"- **{item['股票']}** {item['日期']}　{item['標題']}　[🔗 連結]({item['連結']})\n"
+        report += f"- **{item['股票']}** {item['日期']}　{item['情緒']}　{item['標題']}　[🔗 連結]({item['連結']})\n"
 
 if global_news:
-    report += "\n### 🌐 Marketaux 全球新聞 + 情緒分析\n"
+    report += "\n### 🌐 Marketaux 全球新聞 + FinBERT-Tone 情緒分析\n"
     for news in global_news:
-        report += f"- {news['emoji']} **{news['類型']}** {news['時間']}　{news['標題']}　分數 **{news['情緒']}**　({news['來源']})　[🔗 連結]({news['連結']})\n"
+        report += f"- {news['情緒']} **{news['類型']}** {news['時間']}　{news['標題']}　({news['來源']})　[🔗 連結]({news['連結']})\n"
 
-report += f"\n---\n🚀 資料來源：TWSE 官方 + twstock + FinMind + Marketaux | Render Cron Job"
+report += f"\n---\n🚀 資料來源：TWSE 官方 + twstock + FinMind + Marketaux + FinBERT-Tone | Render Cron Job"
 
-# ====================== 推送 Discord ======================
+# ====================== 推送 ======================
 def send_discord(msg):
     if not DISCORD_WEBHOOK_URL:
         return
