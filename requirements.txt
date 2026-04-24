@@ -9,3 +9,5 @@ finnhub-python
 tqdm
 tabulate
 twstock
+transformers
+torch
